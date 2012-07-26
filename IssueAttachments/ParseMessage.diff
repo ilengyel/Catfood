@@ -1,0 +1,117 @@
+diff --git a/Fody/BuildLogger.cs b/Fody/BuildLogger.cs
+index 171f67a..708c4a4 100644
+--- a/Fody/BuildLogger.cs
++++ b/Fody/BuildLogger.cs
+@@ -1,6 +1,7 @@
+ using System;
+ using System.Text;
+ using Microsoft.Build.Framework;
++using System.Text.RegularExpressions;
+ 
+ public class BuildLogger : MarshalByRefObject, ILogger
+ {
+@@ -22,7 +23,19 @@ public virtual void Initialise(string messageImportance)
+ 
+     public virtual void LogWarning(string message)
+     {
+-        BuildEngine.LogWarningEvent(new BuildWarningEventArgs("", "", "", 0, 0, 0, 0, string.Format("{0}: {1}", "Fody", message), "", "Fody"));
++        var msg = this.ParseMessage(message);
++        BuildEngine.LogWarningEvent(
++            new BuildWarningEventArgs(
++                msg.SubCategory, 
++                msg.Code, 
++                msg.File, 
++                msg.LineNumber, 
++                msg.ColumnNumber, 
++                msg.EndLineNumber, 
++                msg.EndColumnNumber, 
++                string.Format("{0}: {1}", "Fody", msg.Message), 
++                "", 
++                "Fody"));
+     }
+ 
+     public virtual void LogInfo(string message)
+@@ -32,18 +45,30 @@ public virtual void LogInfo(string message)
+ 
+     public virtual void LogError(string currentWeaver, string message)
+     {
++        var msg = this.ParseMessage(message);
+         stringBuilder.AppendLine("  Error: " + message);
+         string format;
+ 
+         if (currentWeaver == null)
+         {
+-            format = string.Format("Fody: {0}:", message);
++            format = string.Format("Fody: {0}:", msg.Message);
+         }
+         else
+         {
+-            format = string.Format("Fody/{0}: {1}", currentWeaver.Replace(".Fody",""), message);
++            format = string.Format("Fody/{0}: {1}", currentWeaver.Replace(".Fody",""), msg.Message);
+         }
+-        BuildEngine.LogErrorEvent(new BuildErrorEventArgs("", "", "", 0, 0, 0, 0, format, "", "Fody"));
++        BuildEngine.LogErrorEvent(
++            new BuildErrorEventArgs(
++                msg.SubCategory,
++                msg.Code,
++                msg.File,
++                msg.LineNumber,
++                msg.ColumnNumber,
++                msg.EndLineNumber,
++                msg.EndColumnNumber, 
++                format, 
++                "", 
++                "Fody"));
+     }
+ 
+     public virtual void Flush()
+@@ -53,5 +78,48 @@ public virtual void Flush()
+         BuildEngine.LogMessageEvent(new BuildMessageEventArgs(message, "", "Fody", MessageImportance));
+     }
+ 
++    private struct MessageInfo
++    {
++        public string SubCategory;
++
++        public string Code;
++
++        public string File;
++
++        public int LineNumber;
++
++        public int ColumnNumber;
++
++        public int EndLineNumber;
++
++        public int EndColumnNumber;
+ 
++        public string Message;
++    }
++
++    private MessageInfo ParseMessage(string message)
++    {
++        var regEx = @"(?<location>(?<file>[^\(]*)\((?<line>\d+),(?<column>\d+)\)):\s*(?<errLevel>[^\s]*)\s+(?<code>[^:]*):\s*(?<message>.*)";
++        var match = Regex.Match(message, regEx);
++        if (match.Success)
++        {
++            return new MessageInfo
++                {
++                    SubCategory = "",
++                    Code = match.Groups["code"].Value,
++                    File = match.Groups["file"].Value,
++                    LineNumber = int.Parse(match.Groups["line"].Value),
++                    ColumnNumber = int.Parse(match.Groups["column"].Value),
++                    Message = match.Groups["message"].Value
++                };
++        }
++
++        return new MessageInfo
++            {
++                SubCategory = "",
++                Code = "",
++                File = "",
++                Message = message,
++            };
++    }
+ }
+\ No newline at end of file
